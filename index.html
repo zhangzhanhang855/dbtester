@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>分贝监测</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial; text-align: center; padding: 20px; }
+    canvas { max-width: 100%; }
+    button { padding: 10px 20px; margin: 10px; }
+  </style>
+</head>
+<body>
+  <h2>实时分贝监测</h2>
+  <p id="dbValue">当前分贝：-- dB</p>
+  <button onclick="start()">开始监测</button>
+  <button onclick="downloadChart()">下载图表</button>
+
+  <canvas id="chart"></canvas>
+
+  <script>
+    let audioContext, analyser, dataArray;
+    let dbData = [];
+    let timeLabels = [];
+    const maxPoints = 600; // 10分钟（每秒1个点）
+
+    const ctx = document.getElementById('chart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: timeLabels,
+        datasets: [{
+          label: '分贝 (dB)',
+          data: dbData,
+          borderWidth: 1,
+          fill: false
+        }]
+      },
+      options: {
+        animation: false,
+        scales: {
+          y: {
+            beginAtZero: true
+          }
+        }
+      }
+    });
+
+    async function start() {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioContext.createMediaStreamSource(stream);
+
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 2048;
+      const bufferLength = analyser.fftSize;
+      dataArray = new Uint8Array(bufferLength);
+
+      source.connect(analyser);
+
+      setInterval(update, 1000);
+    }
+
+    function update() {
+      analyser.getByteTimeDomainData(dataArray);
+
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        let val = (dataArray[i] - 128) / 128;
+        sum += val * val;
+      }
+
+      let rms = Math.sqrt(sum / dataArray.length);
+      let db = 20 * Math.log10(rms);
+      db = Math.max(db, -100);
+
+      document.getElementById('dbValue').innerText = '当前分贝：' + db.toFixed(2) + ' dB';
+
+      const now = new Date().toLocaleTimeString();
+
+      dbData.push(db);
+      timeLabels.push(now);
+
+      if (dbData.length > maxPoints) {
+        dbData.shift();
+        timeLabels.shift();
+      }
+
+      chart.update();
+    }
+
+    function downloadChart() {
+      const link = document.createElement('a');
+      link.href = chart.toBase64Image();
+      link.download = 'decibel_chart.png';
+      link.click();
+    }
+  </script>
+</body>
+</html>
